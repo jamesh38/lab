@@ -1,5 +1,17 @@
 # Home Lab K3s Cluster - Claude Instructions
 
+## Claude Behavior Rules
+
+**NEVER deploy or apply changes directly to the cluster.** Always provide the user with the exact command to run and let them execute it. This includes:
+- `kubectl apply` commands
+- `kubectl delete` commands
+- `kubectl rollout restart` commands
+- Any other commands that modify cluster state
+
+**ALWAYS explain kubectl commands** when providing them. Educate the user on what each command does, including flags and options. This helps build Kubernetes knowledge over time.
+
+**For database operations**, the user has TablePlus installed. Provide SQL queries directly rather than using `kubectl exec` into the PostgreSQL pod. The database is accessible at `192.168.1.104:30432` (user: `postgres`, password: `pass`).
+
 ## Cluster Overview
 
 This is a two-node K3s (lightweight Kubernetes) cluster for a home lab environment.
@@ -89,6 +101,11 @@ All download apps run in a single pod behind **Gluetun** (WireGuard VPN to AirVP
 - **Traefik** - Ingress controller with Let's Encrypt SSL
   - Domain: `*.lab.jjh.us`
   - ACME email: admin@jjh.us
+
+**Service type guidance:**
+- Use **ClusterIP** (default) for HTTP services - Traefik ingress handles external access
+- Use **NodePort** only for non-HTTP protocols (SSH, MQTT, etc.) that Traefik can't route
+- All web UIs should go through Ingress, not NodePort
 
 ## Common Commands
 
