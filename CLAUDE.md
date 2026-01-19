@@ -4,6 +4,10 @@
 
 This is a two-node K3s (lightweight Kubernetes) cluster for a home lab environment.
 
+**Internet:** 1 Gbps symmetric (1 Gbps up / 1 Gbps down)
+
+**Network:** UniFi
+
 ### Nodes
 
 | Node | Role | IP | Hardware | Notes |
