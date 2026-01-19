@@ -1,0 +1,402 @@
+# ============================================================================
+# DEPLOYMENT
+# ============================================================================
+# Multi-container deployment for torrent stack:
+# - Gluetun: VPN tunnel for all traffic
+# - qBittorrent: Torrent client (port 8080)
+# - Radarr: Movie automation (port 7878)
+# - Sonarr: TV show automation (port 8989)
+# - Prowlarr: Indexer manager (port 9696)
+# - FlareSolverr: Cloudflare bypass (port 8191)
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.portainer.kubernetes.application.kind: content
+    io.portainer.kubernetes.application.name: torrent
+    io.portainer.kubernetes.application.owner: james
+    io.portainer.kubernetes.application.stack: torrent
+    io.portainer.kubernetes.application.stackid: "4"
+  name: qbittorrent
+  namespace: downloads
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: qbittorrent
+  template:
+    metadata:
+      labels:
+        app: qbittorrent
+        io.portainer.kubernetes.application.kind: content
+        io.portainer.kubernetes.application.name: torrent
+        io.portainer.kubernetes.application.owner: james
+        io.portainer.kubernetes.application.stack: torrent
+        io.portainer.kubernetes.application.stackid: "4"
+    spec:
+      # Pin to opti node where all storage volumes are located
+      nodeSelector:
+        kubernetes.io/hostname: opti
+
+      containers:
+        # VPN Container - Routes all traffic through AirVPN
+        - name: gluetun
+          image: qmcgaw/gluetun:latest
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+            privileged: true
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              value: custom
+            - name: VPN_TYPE
+              value: wireguard
+            - name: WIREGUARD_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: airvpn-wireguard
+                  key: private-key
+            - name: WIREGUARD_PRESHARED_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: airvpn-wireguard
+                  key: preshared-key
+            - name: WIREGUARD_ADDRESSES
+              valueFrom:
+                secretKeyRef:
+                  name: airvpn-wireguard
+                  key: addresses
+            - name: WIREGUARD_PUBLIC_KEY
+              value: "PyLCXAQT8KkM4T+dUsOQfn+Ub3pGxfGlxkIApuig+hk="
+            - name: VPN_ENDPOINT_IP
+              value: "198.44.136.27"
+            - name: VPN_ENDPOINT_PORT
+              value: "1637"
+            - name: TZ
+              value: America/New_York
+            - name: FIREWALL
+              value: "on"
+            - name: FIREWALL_INPUT_PORTS
+              value: "8080,7878,8989,9696,8191"
+            - name: FIREWALL_VPN_INPUT_PORTS
+              value: "48722"
+            - name: DOT
+              value: "off"
+            - name: DNS_ADDRESS
+              value: "10.128.0.1"
+            - name: BLOCK_MALICIOUS
+              value: "on"
+            - name: BLOCK_SURVEILLANCE
+              value: "on"
+            - name: BLOCK_ADS
+              value: "on"
+          volumeMounts:
+            - mountPath: /dev/net/tun
+              name: tun-device
+          ports:
+            - containerPort: 8080
+              name: qbittorrent-web
+              protocol: TCP
+            - containerPort: 7878
+              name: radarr-web
+              protocol: TCP
+            - containerPort: 8989
+              name: sonarr-web
+              protocol: TCP
+            - containerPort: 9696
+              name: prowlarr-web
+              protocol: TCP
+            - containerPort: 8191
+              name: flaresolverr
+              protocol: TCP
+            - containerPort: 48722
+              name: bt-tcp
+              protocol: TCP
+            - containerPort: 48722
+              name: bt-udp
+              protocol: UDP
+
+        # qBittorrent - Torrent client
+        - name: qbittorrent
+          image: lscr.io/linuxserver/qbittorrent:latest
+          imagePullPolicy: Always
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/New_York
+            - name: WEBUI_PORT
+              value: "8080"
+          volumeMounts:
+            - mountPath: /config
+              name: qbittorrent-config
+            - mountPath: /downloads
+              name: downloads
+
+        # Radarr - Movie management and automation
+        - name: radarr
+          image: lscr.io/linuxserver/radarr:latest
+          imagePullPolicy: Always
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/New_York
+          volumeMounts:
+            - mountPath: /config
+              name: radarr-config
+            - mountPath: /downloads
+              name: downloads
+            - mountPath: /movies
+              name: movies
+
+        # Sonarr - TV show management and automation
+        - name: sonarr
+          image: lscr.io/linuxserver/sonarr:latest
+          imagePullPolicy: Always
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/New_York
+          volumeMounts:
+            - mountPath: /config
+              name: sonarr-config
+            - mountPath: /downloads
+              name: downloads
+            - mountPath: /tv
+              name: tv
+
+        # Prowlarr - Indexer manager
+        - name: prowlarr
+          image: lscr.io/linuxserver/prowlarr:latest
+          imagePullPolicy: Always
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/New_York
+          volumeMounts:
+            - mountPath: /config
+              name: prowlarr-config
+
+        # FlareSolverr - Cloudflare bypass proxy
+        - name: flaresolverr
+          image: ghcr.io/flaresolverr/flaresolverr:latest
+          imagePullPolicy: Always
+          env:
+            - name: TZ
+              value: America/New_York
+            - name: LOG_LEVEL
+              value: info
+          ports:
+            - containerPort: 8191
+              name: flaresolverr
+              protocol: TCP
+
+      volumes:
+        - name: qbittorrent-config
+          hostPath:
+            path: /srv/qbittorrent/config
+            type: DirectoryOrCreate
+        - name: radarr-config
+          hostPath:
+            path: /srv/radarr/config
+            type: DirectoryOrCreate
+        - name: sonarr-config
+          hostPath:
+            path: /srv/sonarr/config
+            type: DirectoryOrCreate
+        - name: downloads
+          hostPath:
+            path: /srv/downloads
+            type: DirectoryOrCreate
+        - name: movies
+          hostPath:
+            path: /srv/media/movies
+            type: DirectoryOrCreate
+        - name: tv
+          hostPath:
+            path: /srv/media/tv
+            type: DirectoryOrCreate
+        - name: prowlarr-config
+          hostPath:
+            path: /srv/prowlarr/config
+            type: DirectoryOrCreate
+        - name: tun-device
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+
+# ============================================================================
+# SERVICE
+# ============================================================================
+# ClusterIP service for web UIs (accessed via Traefik ingress)
+# BitTorrent ports are NOT exposed here - inbound BT traffic comes through
+# AirVPN port forwarding via the Gluetun VPN tunnel only
+# ============================================================================
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    io.portainer.kubernetes.application.kind: content
+    io.portainer.kubernetes.application.name: torrent
+    io.portainer.kubernetes.application.owner: james
+    io.portainer.kubernetes.application.stack: torrent
+    io.portainer.kubernetes.application.stackid: "4"
+  name: qbittorrent
+  namespace: downloads
+spec:
+  type: ClusterIP
+  selector:
+    app: qbittorrent
+  ports:
+    - name: qbittorrent-web
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    - name: radarr-web
+      port: 7878
+      protocol: TCP
+      targetPort: 7878
+    - name: sonarr-web
+      port: 8989
+      protocol: TCP
+      targetPort: 8989
+    - name: prowlarr-web
+      port: 9696
+      protocol: TCP
+      targetPort: 9696
+
+# ============================================================================
+# INGRESS ROUTES
+# ============================================================================
+# Traefik ingress routes with automatic Let's Encrypt SSL certificates
+# ============================================================================
+
+---
+# qBittorrent Ingress - download.lab.jjh.us
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qbittorrent
+  namespace: downloads
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - download.lab.jjh.us
+  rules:
+    - host: download.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qbittorrent
+                port:
+                  number: 8080
+
+---
+# Radarr Ingress - radarr.lab.jjh.us
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: radarr
+  namespace: downloads
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - radarr.lab.jjh.us
+  rules:
+    - host: radarr.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qbittorrent
+                port:
+                  number: 7878
+
+---
+# Sonarr Ingress - sonarr.lab.jjh.us
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sonarr
+  namespace: downloads
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - sonarr.lab.jjh.us
+  rules:
+    - host: sonarr.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qbittorrent
+                port:
+                  number: 8989
+
+---
+# Prowlarr Ingress - prowlarr.lab.jjh.us
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prowlarr
+  namespace: downloads
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - prowlarr.lab.jjh.us
+  rules:
+    - host: prowlarr.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qbittorrent
+                port:
+                  number: 9696

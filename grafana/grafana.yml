@@ -1,0 +1,137 @@
+# ============================================================================
+# NAMESPACE
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grafana
+
+# ============================================================================
+# PERSISTENT VOLUME CLAIM
+# ============================================================================
+# Stores Grafana database, plugins, and configuration
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+# ============================================================================
+# DEPLOYMENT
+# ============================================================================
+# Grafana visualization and dashboard platform
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin
+            - name: GF_LOG_LEVEL
+              value: info
+          volumeMounts:
+            # Grafana internal DB, plugins, etc
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+            # Dashboard JSON files
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
+            # Provisioning configuration
+            - name: grafana-provisioning
+              mountPath: /etc/grafana/provisioning
+
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: grafana-dashboards
+          hostPath:
+            path: /srv/grafana/dashboards
+            type: DirectoryOrCreate
+        - name: grafana-provisioning
+          hostPath:
+            path: /srv/grafana/provisioning
+            type: DirectoryOrCreate
+
+# ============================================================================
+# SERVICE
+# ============================================================================
+# NodePort service for Grafana web UI
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: grafana
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      nodePort: 30300
+
+# ============================================================================
+# INGRESS
+# ============================================================================
+# Traefik ingress with automatic Let's Encrypt SSL certificate
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: grafana
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - grafana.lab.jjh.us
+  rules:
+    - host: grafana.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000

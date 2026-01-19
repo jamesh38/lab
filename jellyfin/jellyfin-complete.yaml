@@ -1,0 +1,260 @@
+# ============================================================================
+# JELLYFIN MEDIA SERVER - COMPLETE CONFIGURATION
+# ============================================================================
+# Comprehensive Jellyfin deployment with:
+# - NFS shared media storage (accessible from all nodes)
+# - Local config/cache on opti node (pinned with nodeSelector)
+# - Intel QuickSync hardware transcoding (GPU acceleration)
+# - Traefik ingress with Let's Encrypt SSL
+# - Service exposure via NodePort
+# ============================================================================
+
+# ============================================================================
+# NAMESPACE
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: media
+
+# ============================================================================
+# NFS PERSISTENT VOLUMES
+# ============================================================================
+# Shared media storage accessible from all cluster nodes via NFS
+# Server: opti (192.168.1.104)
+# Export: /srv/media
+# ============================================================================
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-media
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany  # Multiple nodes can mount read-write
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  nfs:
+    server: 192.168.1.104  # opti node IP
+    path: /srv/media
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-media
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 500Gi
+
+# ============================================================================
+# DEPLOYMENT
+# ============================================================================
+# Jellyfin media server
+# Pinned to opti node for access to local config/cache/fonts/media2
+# Uses NFS for main media library (/srv/media)
+# ============================================================================
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: media
+  labels:
+    app: jellyfin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+    spec:
+      # Pin to opti node since config/cache/fonts/media2 are local hostPath
+      nodeSelector:
+        kubernetes.io/hostname: opti
+
+      # Run as user/group 1000, supplemental groups 44 (video) + 993 (render) for GPU access
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+        supplementalGroups: [44, 993]  # video + render groups for /dev/dri access
+
+      containers:
+        - name: jellyfin
+          image: jellyfin/jellyfin:latest
+          imagePullPolicy: Always
+
+          # Allow access to GPU device - requires privileged mode for /dev/dri
+          securityContext:
+            privileged: true  # Required for GPU device access
+
+          # Resource limits - adjust based on your needs
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "4000m"
+              # gpu.intel.com/i915: "1"  # Commented out - no GPU device plugin installed
+
+          # Environment variables for optimization
+          env:
+            - name: JELLYFIN_PublishedServerUrl
+              value: "https://stream.lab.jjh.us"
+            # Disable HTTPS redirect since Traefik handles SSL
+            - name: JELLYFIN_NO_SSL_REDIRECT
+              value: "true"
+
+          ports:
+            - name: http
+              containerPort: 8096
+              protocol: TCP
+            - name: discovery
+              containerPort: 7359
+              protocol: UDP
+
+          volumeMounts:
+            # Config - local to opti
+            - name: config
+              mountPath: /config
+
+            # Cache - local to opti
+            - name: cache
+              mountPath: /cache
+
+            # Main media library - NFS shared
+            - name: media
+              mountPath: /media
+
+            # Secondary media - local to opti
+            - name: media2
+              mountPath: /media2
+              readOnly: true
+
+            # Custom fonts - local to opti
+            - name: fonts
+              mountPath: /usr/local/share/fonts/custom
+              readOnly: true
+
+            # Intel GPU for hardware transcoding
+            - name: dri
+              mountPath: /dev/dri
+              readOnly: false
+
+      volumes:
+        # Config stored on opti
+        - name: config
+          hostPath:
+            path: /srv/jellyfin/config
+            type: DirectoryOrCreate
+
+        # Cache stored on opti
+        - name: cache
+          hostPath:
+            path: /srv/jellyfin/cache
+            type: DirectoryOrCreate
+
+        # Main media via direct hostPath (pinned to opti, no NFS overhead)
+        - name: media
+          hostPath:
+            path: /srv/media
+            type: Directory
+
+        # Secondary media on opti
+        - name: media2
+          hostPath:
+            path: /srv/media2
+            type: DirectoryOrCreate
+
+        # Fonts on opti
+        - name: fonts
+          hostPath:
+            path: /srv/fonts
+            type: DirectoryOrCreate
+
+        # Intel GPU device for hardware transcoding
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: Directory
+
+# ============================================================================
+# SERVICE
+# ============================================================================
+# NodePort service for Jellyfin
+# HTTP: 8096 -> NodePort 30096
+# Discovery: 7359/UDP -> NodePort 30359
+# ============================================================================
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin
+  namespace: media
+  labels:
+    app: jellyfin
+spec:
+  type: NodePort
+  selector:
+    app: jellyfin
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+      nodePort: 30096
+      protocol: TCP
+    - name: discovery
+      port: 7359
+      targetPort: 7359
+      nodePort: 30359
+      protocol: UDP
+
+# ============================================================================
+# INGRESS
+# ============================================================================
+# Traefik ingress with automatic Let's Encrypt SSL certificate
+# URL: https://stream.lab.jjh.us
+# ============================================================================
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jellyfin
+  namespace: media
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - stream.lab.jjh.us
+  rules:
+    - host: stream.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jellyfin
+                port:
+                  number: 8096

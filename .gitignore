@@ -1,0 +1,15 @@
+# VPN configuration files (contain private keys)
+downloads/airvpn/
+downloads/mullvad/
+downloads/protonvpn/
+*.conf
+
+# Claude local settings
+.claude/
+
+# Plan files
+.claude/plans/
+
+# OS files
+.DS_Store
+Thumbs.db
