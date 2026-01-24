@@ -191,7 +191,7 @@ data:
     - Infrastructure:
         - Traefik:
             icon: traefik.svg
-            href: http://192.168.1.104:9000/dashboard/
+            href: http://192.168.1.104:30880/dashboard/
             description: Ingress controller
             widget:
               type: traefik

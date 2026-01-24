@@ -1,4 +1,11 @@
 # ============================================================================
+# GRAFANA
+# ============================================================================
+# Visualization and dashboard platform
+# URL: https://grafana.lab.jjh.us
+# ============================================================================
+
+# ============================================================================
 # NAMESPACE
 # ============================================================================
 
@@ -28,7 +35,6 @@ spec:
 # ============================================================================
 # DEPLOYMENT
 # ============================================================================
-# Grafana visualization and dashboard platform
 
 ---
 apiVersion: apps/v1
@@ -63,30 +69,29 @@ spec:
             # Grafana internal DB, plugins, etc
             - name: grafana-data
               mountPath: /var/lib/grafana
-            # Dashboard JSON files
-            - name: grafana-dashboards
+            # All dashboards from git repo (version controlled)
+            - name: dashboards
               mountPath: /var/lib/grafana/dashboards
-            # Provisioning configuration
-            - name: grafana-provisioning
+            # Provisioning from git repo (datasources + dashboard providers)
+            - name: provisioning
               mountPath: /etc/grafana/provisioning
 
       volumes:
         - name: grafana-data
           persistentVolumeClaim:
             claimName: grafana-data
-        - name: grafana-dashboards
+        - name: dashboards
           hostPath:
-            path: /srv/grafana/dashboards
+            path: /home/james/apps/grafana/dashboards
             type: DirectoryOrCreate
-        - name: grafana-provisioning
+        - name: provisioning
           hostPath:
-            path: /srv/grafana/provisioning
+            path: /home/james/apps/grafana/provisioning
             type: DirectoryOrCreate
 
 # ============================================================================
 # SERVICE
 # ============================================================================
-# NodePort service for Grafana web UI
 
 ---
 apiVersion: v1
@@ -95,19 +100,20 @@ metadata:
   name: grafana
   namespace: grafana
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: grafana
   ports:
     - name: http
       port: 3000
       targetPort: 3000
-      nodePort: 30300
 
 # ============================================================================
 # INGRESS
 # ============================================================================
-# Traefik ingress with automatic Let's Encrypt SSL certificate
+# Traefik ingress with Let's Encrypt SSL
+# URL: https://grafana.lab.jjh.us
+# ============================================================================
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -118,8 +124,6 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
-    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
-    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
 spec:
   tls:
     - hosts:

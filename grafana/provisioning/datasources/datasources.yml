@@ -1,0 +1,34 @@
+apiVersion: 1
+
+datasources:
+  # TeslaMate PostgreSQL database
+  - name: TeslaMate
+    type: postgres
+    url: postgresql.db.svc.cluster.local:5432
+    user: postgres
+    access: proxy
+    basicAuth: false
+    isDefault: true
+    secureJsonData:
+      password: pass
+    jsonData:
+      postgresVersion: 1700
+      sslmode: disable
+      database: teslamate
+    editable: true
+
+  # Prometheus metrics
+  - name: Prometheus
+    type: prometheus
+    url: http://prometheus.monitoring.svc.cluster.local:9090
+    access: proxy
+    isDefault: false
+    editable: true
+
+  # Loki logs
+  - name: Loki
+    type: loki
+    url: http://loki.logging.svc.cluster.local:3100
+    access: proxy
+    isDefault: false
+    editable: true
