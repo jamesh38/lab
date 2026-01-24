@@ -1,0 +1,422 @@
+# ============================================================================
+# HOMEPAGE DASHBOARD - COMPLETE CONFIGURATION
+# ============================================================================
+# Modern, customizable dashboard with service integrations for:
+# - Jellyfin (media streaming)
+# - qBittorrent, Radarr, Sonarr, Prowlarr (downloads)
+# - Grafana, Portainer (monitoring)
+# - Gitea, Docker Registry (infrastructure)
+# - TeslaMate (vehicle tracking)
+#
+# Before deploying:
+# 1. Create storage directory: ssh opti "sudo mkdir -p /srv/homepage/config && sudo chown 1000:1000 /srv/homepage/config"
+# 2. Update the Secret below with your actual API keys
+# ============================================================================
+
+# ============================================================================
+# NAMESPACE
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homepage
+
+# ============================================================================
+# SECRET
+# ============================================================================
+# API keys stored in separate file: secrets.yaml (not committed to git)
+# Create secrets.yaml from secrets.yaml.example and fill in your values
+# ============================================================================
+
+# ============================================================================
+# CONFIGMAPS
+# ============================================================================
+# Homepage configuration files
+# ============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage-config
+  namespace: homepage
+data:
+  # Docker integration disabled (using Kubernetes)
+  docker.yaml: ""
+
+  # Kubernetes integration - allows Homepage to show cluster info
+  kubernetes.yaml: |
+    mode: cluster
+
+  # Main settings
+  settings.yaml: |
+    title: Home Lab
+    favicon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/homepage.png
+    theme: dark
+    color: slate
+    headerStyle: clean
+    layout:
+      Media:
+        style: row
+        columns: 1
+      Downloads:
+        style: row
+        columns: 2
+      Monitoring:
+        style: row
+        columns: 2
+      Infrastructure:
+        style: row
+        columns: 2
+      Other:
+        style: row
+        columns: 1
+
+  # Bookmarks (optional quick links)
+  bookmarks.yaml: |
+    - Developer:
+        - GitHub:
+            - abbr: GH
+              href: https://github.com
+
+  # Widget configuration (top bar widgets)
+  widgets.yaml: |
+    - kubernetes:
+        cluster:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+          label: "k3s cluster"
+        nodes:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+    - datetime:
+        text_size: xl
+        format:
+          dateStyle: long
+          timeStyle: short
+          hourCycle: h12
+    - unifi_console:
+        url: https://192.168.1.1
+        key: {{HOMEPAGE_VAR_UNIFI_API_KEY}}
+
+  # Services configuration with integrations
+  services.yaml: |
+    - Media:
+        - Jellyfin:
+            icon: jellyfin.svg
+            href: https://stream.lab.jjh.us
+            description: Media streaming server
+            widget:
+              type: jellyfin
+              url: http://jellyfin.media.svc.cluster.local:8096
+              key: {{HOMEPAGE_VAR_JELLYFIN_API_KEY}}
+              enableBlocks: true
+              enableNowPlaying: true
+
+    - Downloads:
+        - qBittorrent:
+            icon: qbittorrent.svg
+            href: https://download.lab.jjh.us
+            description: Torrent client
+            widget:
+              type: qbittorrent
+              url: http://qbittorrent.downloads.svc.cluster.local:8080
+              username: {{HOMEPAGE_VAR_QBITTORRENT_USER}}
+              password: {{HOMEPAGE_VAR_QBITTORRENT_PASS}}
+        - Radarr:
+            icon: radarr.svg
+            href: https://radarr.lab.jjh.us
+            description: Movie automation
+            widget:
+              type: radarr
+              url: http://qbittorrent.downloads.svc.cluster.local:7878
+              key: {{HOMEPAGE_VAR_RADARR_API_KEY}}
+        - Sonarr:
+            icon: sonarr.svg
+            href: https://sonarr.lab.jjh.us
+            description: TV show automation
+            widget:
+              type: sonarr
+              url: http://qbittorrent.downloads.svc.cluster.local:8989
+              key: {{HOMEPAGE_VAR_SONARR_API_KEY}}
+        - Prowlarr:
+            icon: prowlarr.svg
+            href: https://prowlarr.lab.jjh.us
+            description: Indexer manager
+            widget:
+              type: prowlarr
+              url: http://qbittorrent.downloads.svc.cluster.local:9696
+              key: {{HOMEPAGE_VAR_PROWLARR_API_KEY}}
+        - Gluetun:
+            icon: gluetun.svg
+            description: VPN tunnel
+            widget:
+              type: gluetun
+              url: http://qbittorrent.downloads.svc.cluster.local:8000
+              fields: ["public_ip", "country", "port_forwarded"]
+
+    - Monitoring:
+        - Grafana:
+            icon: grafana.svg
+            href: https://grafana.lab.jjh.us
+            description: Dashboards & metrics
+            widget:
+              type: grafana
+              url: http://grafana.grafana.svc.cluster.local:3000
+              username: {{HOMEPAGE_VAR_GRAFANA_USER}}
+              password: {{HOMEPAGE_VAR_GRAFANA_PASS}}
+        - Prometheus:
+            icon: prometheus.svg
+            href: http://192.168.1.104:30090
+            description: Metrics collection
+            widget:
+              type: prometheus
+              url: http://prometheus.monitoring.svc.cluster.local:9090
+        - Portainer:
+            icon: portainer.svg
+            href: https://portainer.lab.jjh.us
+            description: Container management
+            widget:
+              type: portainer
+              url: https://portainer.lab.jjh.us
+              env: 1
+              kubernetes: true
+              key: {{HOMEPAGE_VAR_PORTAINER_API_KEY}}
+
+    - Infrastructure:
+        - Traefik:
+            icon: traefik.svg
+            href: http://192.168.1.104:9000/dashboard/
+            description: Ingress controller
+            widget:
+              type: traefik
+              url: http://traefik-api.kube-system.svc.cluster.local:8080
+        - Gitea:
+            icon: gitea.svg
+            href: https://git.lab.jjh.us
+            description: Self-hosted Git
+            widget:
+              type: gitea
+              url: https://git.lab.jjh.us
+              key: {{HOMEPAGE_VAR_GITEA_API_KEY}}
+        - Docker Registry:
+            icon: docker.svg
+            href: https://registry-ui.lab.jjh.us
+            description: Private container registry
+
+    - Other:
+        - TeslaMate:
+            icon: teslamate.svg
+            href: https://teslamate.lab.jjh.us
+            description: Tesla vehicle tracking
+
+# ============================================================================
+# DEPLOYMENT
+# ============================================================================
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app: homepage
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: homepage
+  template:
+    metadata:
+      labels:
+        app: homepage
+    spec:
+      # Pin to opti node where storage lives
+      nodeSelector:
+        kubernetes.io/hostname: opti
+
+      # Service account for Kubernetes integration
+      serviceAccountName: homepage
+      automountServiceAccountToken: true
+
+      containers:
+        - name: homepage
+          image: ghcr.io/gethomepage/homepage:latest
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+
+          # Load API keys from secret as environment variables
+          envFrom:
+            - secretRef:
+                name: homepage-secrets
+
+          env:
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: "lab.jjh.us"
+
+          # Mount config files from ConfigMap
+          volumeMounts:
+            - name: homepage-config
+              mountPath: /app/config/services.yaml
+              subPath: services.yaml
+            - name: homepage-config
+              mountPath: /app/config/settings.yaml
+              subPath: settings.yaml
+            - name: homepage-config
+              mountPath: /app/config/widgets.yaml
+              subPath: widgets.yaml
+            - name: homepage-config
+              mountPath: /app/config/bookmarks.yaml
+              subPath: bookmarks.yaml
+            - name: homepage-config
+              mountPath: /app/config/docker.yaml
+              subPath: docker.yaml
+            - name: homepage-config
+              mountPath: /app/config/kubernetes.yaml
+              subPath: kubernetes.yaml
+            # Persistent storage for logs/cache
+            - name: logs
+              mountPath: /app/config/logs
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+      volumes:
+        - name: homepage-config
+          configMap:
+            name: homepage-config
+        - name: logs
+          hostPath:
+            path: /srv/homepage/logs
+            type: DirectoryOrCreate
+
+# ============================================================================
+# SERVICE ACCOUNT & RBAC
+# ============================================================================
+# Required for Kubernetes cluster integration (showing nodes, pods, etc.)
+# ============================================================================
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage
+  namespace: homepage
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: homepage
+roleRef:
+  kind: ClusterRole
+  name: homepage
+  apiGroup: rbac.authorization.k8s.io
+
+# ============================================================================
+# SERVICE
+# ============================================================================
+# ClusterIP service - accessed via Traefik ingress
+# ============================================================================
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app: homepage
+spec:
+  type: ClusterIP
+  selector:
+    app: homepage
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+
+# ============================================================================
+# INGRESS
+# ============================================================================
+# Traefik ingress with Let's Encrypt SSL
+# URL: https://lab.jjh.us
+# ============================================================================
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homepage
+  namespace: homepage
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - lab.jjh.us
+  rules:
+    - host: lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homepage
+                port:
+                  number: 3000

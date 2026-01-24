@@ -82,7 +82,7 @@ spec:
             - name: FIREWALL
               value: "on"
             - name: FIREWALL_INPUT_PORTS
-              value: "8080,7878,8989,9696,8191"
+              value: "8080,7878,8989,9696,8191,8000"
             - name: FIREWALL_VPN_INPUT_PORTS
               value: "48722"
             - name: DOT
@@ -95,6 +95,9 @@ spec:
               value: "on"
             - name: BLOCK_ADS
               value: "on"
+            # Enable HTTP control server for Homepage integration
+            - name: HTTP_CONTROL_SERVER_ADDRESS
+              value: ":8000"
           volumeMounts:
             - mountPath: /dev/net/tun
               name: tun-device
@@ -113,6 +116,9 @@ spec:
               protocol: TCP
             - containerPort: 8191
               name: flaresolverr
+              protocol: TCP
+            - containerPort: 8000
+              name: gluetun-control
               protocol: TCP
             - containerPort: 48722
               name: bt-tcp
@@ -282,6 +288,10 @@ spec:
       port: 9696
       protocol: TCP
       targetPort: 9696
+    - name: gluetun-control
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
 
 # ============================================================================
 # INGRESS ROUTES

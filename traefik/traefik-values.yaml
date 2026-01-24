@@ -23,6 +23,8 @@ additionalArguments:
   - "--certificatesresolvers.letsencrypt.acme.email=admin@jjh.us"
   - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
   - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+  # Enable API for Homepage integration (internal access only via ClusterIP)
+  - "--api.insecure=true"
 persistence:
   enabled: true
   path: /data

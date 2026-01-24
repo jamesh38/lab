@@ -1,0 +1,23 @@
+# ============================================================================
+# TRAEFIK API SERVICE
+# ============================================================================
+# Exposes Traefik's API/dashboard internally for Homepage integration
+# The API is on port 8080 of the traefik pod (named "traefik")
+# ============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-api
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: traefik
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: traefik
+  ports:
+    - name: traefik
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

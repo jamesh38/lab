@@ -4,6 +4,9 @@ downloads/mullvad/
 downloads/protonvpn/
 *.conf
 
+# Kubernetes secrets (contain API keys and passwords)
+**/secrets.yaml
+
 # Claude local settings
 .claude/
 
