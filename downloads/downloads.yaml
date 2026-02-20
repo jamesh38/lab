@@ -42,7 +42,7 @@ spec:
         kubernetes.io/hostname: opti
 
       containers:
-        # VPN Container - Routes all traffic through AirVPN
+        # VPN Container - Routes all traffic through ProtonVPN
         - name: gluetun
           image: qmcgaw/gluetun:latest
           imagePullPolicy: Always
@@ -59,36 +59,29 @@ spec:
             - name: WIREGUARD_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: airvpn-wireguard
+                  name: protonvpn-wireguard
                   key: private-key
-            - name: WIREGUARD_PRESHARED_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: airvpn-wireguard
-                  key: preshared-key
             - name: WIREGUARD_ADDRESSES
               valueFrom:
                 secretKeyRef:
-                  name: airvpn-wireguard
+                  name: protonvpn-wireguard
                   key: addresses
             - name: WIREGUARD_PUBLIC_KEY
-              value: "PyLCXAQT8KkM4T+dUsOQfn+Ub3pGxfGlxkIApuig+hk="
+              value: "lCHO3SdyjtSB6O4iq77Dw776oiwt7suMrscZNec0jms="
             - name: VPN_ENDPOINT_IP
-              value: "198.44.136.27"
+              value: "151.243.141.3"
             - name: VPN_ENDPOINT_PORT
-              value: "1637"
+              value: "51820"
             - name: TZ
               value: America/New_York
             - name: FIREWALL
               value: "on"
             - name: FIREWALL_INPUT_PORTS
               value: "8080,7878,8989,9696,8191,8000"
-            - name: FIREWALL_VPN_INPUT_PORTS
-              value: "48722"
             - name: DOT
               value: "off"
             - name: DNS_ADDRESS
-              value: "10.128.0.1"
+              value: "10.2.0.1"
             - name: BLOCK_MALICIOUS
               value: "on"
             - name: BLOCK_SURVEILLANCE
@@ -252,7 +245,7 @@ spec:
 # ============================================================================
 # ClusterIP service for web UIs (accessed via Traefik ingress)
 # BitTorrent ports are NOT exposed here - inbound BT traffic comes through
-# AirVPN port forwarding via the Gluetun VPN tunnel only
+# the VPN tunnel via Gluetun only
 # ============================================================================
 
 ---
@@ -410,3 +403,102 @@ spec:
                 name: qbittorrent
                 port:
                   number: 9696
+
+# ============================================================================
+# JELLYSEERR DEPLOYMENT
+# ============================================================================
+# Separate deployment for Jellyseerr - media request management
+# Fork of Overseerr with Jellyfin/Emby support
+# Does NOT need VPN protection as it's just a request frontend
+# Communicates with Radarr/Sonarr via cluster service endpoints
+# ============================================================================
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyseerr
+  namespace: downloads
+  labels:
+    app: jellyseerr
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: jellyseerr
+  template:
+    metadata:
+      labels:
+        app: jellyseerr
+    spec:
+      # Pin to opti node where storage is located
+      nodeSelector:
+        kubernetes.io/hostname: opti
+      containers:
+        - name: jellyseerr
+          image: fallenbagel/jellyseerr:latest
+          imagePullPolicy: Always
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/New_York
+          ports:
+            - containerPort: 5055
+              name: web
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /app/config
+              name: jellyseerr-config
+      volumes:
+        - name: jellyseerr-config
+          hostPath:
+            path: /srv/jellyseerr/config
+            type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyseerr
+  namespace: downloads
+spec:
+  type: ClusterIP
+  selector:
+    app: jellyseerr
+  ports:
+    - name: web
+      port: 5055
+      protocol: TCP
+      targetPort: 5055
+
+---
+# Jellyseerr Ingress - request.lab.jjh.us
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jellyseerr
+  namespace: downloads
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: "lab.jjh.us"
+    traefik.ingress.kubernetes.io/router.tls.domains.0.sans: "*.lab.jjh.us"
+spec:
+  tls:
+    - hosts:
+        - request.lab.jjh.us
+  rules:
+    - host: request.lab.jjh.us
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jellyseerr
+                port:
+                  number: 5055

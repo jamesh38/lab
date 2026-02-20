@@ -71,7 +71,7 @@ All persistent data lives on the **opti** node under `/srv/`:
 
 ### Download Stack (VPN-protected)
 
-All download apps run in a single pod behind **Gluetun** (WireGuard VPN to AirVPN):
+All download apps run in a single pod behind **Gluetun** (WireGuard VPN to ProtonVPN):
 
 - **qBittorrent** (`download.lab.jjh.us`) - Torrent client, NodePort: 30088
 - **Radarr** (`radarr.lab.jjh.us`) - Movie automation, NodePort: 30787
@@ -159,4 +159,4 @@ Example movie path:
 
 ## Secrets
 
-VPN credentials stored in Kubernetes secret `airvpn-wireguard` in `downloads` namespace.
+VPN credentials stored in Kubernetes secret `protonvpn-wireguard` in `downloads` namespace.
